@@ -1,0 +1,115 @@
+---
+title: "course_project"
+output: html_document
+---
+
+## Reading in the training data
+
+```{r}
+library(ggplot2)
+library(caret)
+set.seed(1234)
+pml_data = read.csv("pml-training.csv")
+classe = pml_data$classe
+pml_data = pml_data[,-160]
+pml_data = sapply(pml_data, as.numeric)
+pml_data = as.data.frame(pml_data)
+```
+
+## Dividing the data into training and test data
+
+```{r}
+inTrain = createDataPartition(y=classe, p=0.7, list=F)
+training = pml_data[inTrain,]
+testing = pml_data[-inTrain,]
+```
+
+## pre-cleaning of data and feature selection
+
+```{r}
+nsv = nearZeroVar(training,saveMetrics=T)
+training_var = training[,!nsv$nzv] # remove the near-zero-var features
+
+cs = colSums(apply(training_var, 2, function(x) ! is.na(x)))
+training_var = training_var[,cs>500] # remove the columns with few data points.
+training_var = training_var[,-c(1:6)] # manually remove the metadata columns that shouldn't be needed
+```
+
+## preprocessing of data
+
+```{r}
+preproc = preProcess(training_var, method=c("center", "scale"))
+training_varS = predict(preproc, training_var)
+boxplot(training_varS, outline=F, cex.axis=0.2, las=2)
+```
+
+## Train a predictor using the Random Forest method
+
+The training process took several hours to run from my laptop, and so I'm including all the outputs directly below.  Since LDA is very fast, I've run it as part of the knitr for the computes to be included below.
+
+The training uses resampling with 25 iterations (default).
+
+Auto-generated results for the LDA method are shown below:
+```{r}
+modFit = train(classe[inTrain] ~ ., method="lda", data=training_varS)
+```
+
+The earlier-generated results from using the Random Forest are now shown here:
+```
+modFit = train(classe[inTrain] ~ ., method="rf", data=training_varS, prox=T)
+#> 
+#    > 
+#    > 
+#    > modFit
+#Random Forest 
+#
+#13737 samples
+#51 predictor
+#5 classes: 'A', 'B', 'C', 'D', 'E' 
+#
+#No pre-processing
+#Resampling: Bootstrapped (25 reps) 
+#
+#Summary of sample sizes: 13737, 13737, 13737, 13737, 13737, 13737, ... 
+#
+#Resampling results across tuning parameters:
+#    
+#    mtry  Accuracy  Kappa  Accuracy SD  Kappa SD
+#2    0.989     0.987  0.00183      0.00231 
+#27    0.989     0.986  0.00218      0.00277 
+#52    0.983     0.978  0.00404      0.00512 
+
+#Accuracy was used to select the optimal model using  the largest value.
+#The final value used for the model was mtry = 2. 
+```
+
+## Determine the out of sample error rate:
+The code below is using the LDA method to auto-compute the out-of-sample error rate:
+
+```{r}
+testing_var = testing[,colnames(training_var)]
+testing_varS = predict(preproc,testing_var)
+confusionMatrix(classe[-inTrain],predict(modFit,testing_varS))
+```
+
+## predict on the final test/validation data:
+
+Predictions below are also based on the LDA method.  
+
+```{r}
+pml_testing_raw = read.csv("pml-testing.csv")
+pml_testing = pml_testing_raw[,colnames(training_varS)]
+pml_testing = sapply(pml_testing, as.numeric)
+pml_testingS = predict(preproc, pml_testing)
+predict(modFit,pml_testingS)
+```
+
+Results from running the Random forest method earlier are as follows:
+
+```
+#[1] B A B A A E D B A A B C B A E E A B B B
+#Levels: A B C D E
+```
+
+
+
