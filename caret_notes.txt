@@ -1,0 +1,332 @@
+####################################
+## In sample vs. out of sample error
+####################################
+
+-in sample error: error rate you get on teh same data you used to build your predictor. (resubstitution error)
+-out of sample error: error rate you get on a new data set. (generalization error)
+
+
+###########################################
+# Rule of thumb for prediction study design
+###########################################
+
+large sample size: 60% training, 20% testing, 20% validation
+medium sample size: 60% training, 40% testing
+small sample size: do cross validation, report caveat of small sample size
+
+####################
+# Cross validation
+####################
+
+-random subsampling (without replacement)
+-random subsampling with replacement = bootstrapping
+- K-fold: divide into K equal nonoverlapping subsets, iterate through them using one for testing and the others for training.
+	-large K = less bias, more variance
+	-smaller K = more bias, less variance 
+- leave one out: train on all but one, test on the one.
+
+
+
+################################
+#
+#  General framework
+#
+###############################
+
+library(caret)
+library(kernlab)
+data(spam)
+
+inTrain = createDataPartition(y=spam$type, p=0.75, list=FALSE)
+training = spam[inTrain,]
+testing = spam[-inTrain,]
+
+## Fit a model
+modelFit = train(type ~., data=training, method='glm')
+
+# print the modelFit to examine accuracy results from training.
+
+## Predict, given the model
+predictions = predict(modelFit, newdata=testing)
+
+## Generate Confusion Matrix to examine accuracy of predictions
+confusionMatrix(predictions, testing $type)
+
+
+## Pre-processing with PCA
+preProc = preProcess(training, method="pca", pcaComp=2)
+trainPC = predict(preProc, training)
+modelFit = train(training$diagnosis ~ ., method="glm", data=trainPC)
+testPC = predict(preProc, testing)
+confusionMatrix(testing$diagnosis,predict(modelFit,testPC)
+
+
+##########################
+## K-fold training/testing 
+folds = createFolds(y=spam$type,k=10,list=T,returnTrain=T)
+sapply(folds,length)
+
+Fold01 Fold02 Fold03 Fold04 Fold05 Fold06 Fold07 Fold08 Fold09 Fold10 
+  4142   4141   4140   4140   4141   4142   4141   4140   4141   4141
+
+
+##########################
+## Resampling
+
+folds = createResample(y=spam$type,times=10,list=T)
+
+####################################
+
+##################
+## trainControl ##
+##################
+
+args(trainControl)
+
+method  = 'boot' = bootstrapping
+		= 'boot632' = bootstrapping with adjustment
+		= 'cv' = cross validation
+		= 'repeatedcv' = repeated cross validation
+		= 'LOOCV' = leave one out cross validation
+
+number 
+		set for 'boot' or 'cv' to indicate number of subsamples to take
+
+repeats
+		number of times to repeat subsampling
+
+
+** set.seed(num) for reproducible training
+
+
+######################
+## Plotting predictors
+######################
+
+featurePlot(x=training[, c("age", "education", "jobclass")], y=training$wage, plot="pairs")
+
+qplot(age,wage,data=training)
+
+qplot(age, wage, colour=jobclass, data=training)
+
+# add regression smoothers
+qq = qplit(age, wage, colour=education, data=training)
+qq + geom_smooth(method='lm', formula=y~x)
+
+# cut2, making factors (Hmisc package)
+library(Hmisc)
+cutWage = cut2(training$wage, g=3)
+table(cutWage)
+p1 = qplot(cutWage, age, data=training, fill=cutWage, geom=c("boxplot"))
+p2 = qplot(cutWage, age, data=training, fill=cutWage, geom=c("boxplot", "jitter"))
+grid.arrange(p1, p2, ncol=2)
+
+# Tables:
+t1 = table(cutWage, training$jobclass)
+
+# Density plots
+qplot(wage, colour=education, data=training, geom="density")
+
+################
+## Preprocessing
+################
+
+trainCapAve = training$capitalAve
+trainCapAveS = (trainCapAve - mean(trainCapAve))/sd(trainCapAve)
+
+or
+
+preObj = preProcess(training, method=c("center", "scale"))
+trainCapAveS = predict(preObj, training$capitalAve)
+
+or, do it all at once in the train function:
+
+modelFit = train(type ~ ., data=training, preProcess=c("center", "scale"), method="glm")
+
+
+
+###################################
+##  predicting using linear models
+###################################
+
+lm1 = lm(y ~ x, data)
+myY = coef(lm1)[[0]] + coef(lm1)[[1]] * x
+    or
+myY = predict(lm1, x)
+
+#########################################
+## predicting using multiple covariates
+#########################################
+
+library(ISLR); library(ggplot2); library(caret);
+data(Wage);
+Wage = subset(Wage,select=-c(logwage))  # remove var trying to predict
+summary(Wage)
+inTrain = createDataPartition(y=Wage$wage), p=0.7, list=F)
+training = Wage[inTrain,]
+testing = Wage[-inTrain,]
+dim(training); dim(testing)
+
+featurePlot(x=training[,c("age","education","jobclass")], y=training$wage,plot="pairs")
+qplot(age,wage,colour=jobclass,data=training)
+qplot(age,wage,colour=education,data=training)
+
+modFit = train(wage ~ age + jobclass + education, # auto creates indicator vars from factors
+	method="lm", data=training)
+finMod = modFit$finalModel
+print(modFit)
+plot(finMod,1,pch=19,cex=0.5,col="#00000010")
+qplot(finMod$fitted,finMod$residuals,colour=race,data=training)
+
+pred = predict(modFit, testing)
+qplot(wage,pred,colour=year,data=testing)
+
+# if you want to use all covariates
+modFitAll = train(wage ~ ., data=training, method="lm")
+pred = predict(modFitAll, testing)
+qplot(wage,pred,data=testing)
+
+########################################
+##  Predicting with classification trees
+########################################
+
+# basic algorithm:
+1. start with all variables in one group
+2. find the variable/split htat best separates the outcomes
+3. divide the data into two groups ("leaves") on that split ("node")
+4. within each split, find the best variable/split htat separates the outcomes
+5. continue until teh groups are two small or sufficiently "pure"
+
+
+data(iris); library(ggplot2); names(iris)
+qplot(Petal.Width, Sepal.Width, colour=Species,data=training)
+
+library(caret)
+modFit = train(Species ~ ., method="rpart", data=training)
+print(modFit$finalModel)
+
+# plot tree
+plot(modFit$finalModel, uniform=T, main="Classification Tree")
+text(modFit$finalModel, use.n=T, all=T, cex=.8)
+
+# prettier plot
+library(rattle)
+fancyRpartPlot(modFit$finalModel)
+
+# predicting new values
+predict(modFit, newdata=testing)
+
+#############
+## Bagging ##
+#############
+
+Basic idea:
+	1. resample cases and recalculate predictions	
+	2. average or majority vote
+	Most useful for non-linear functions
+
+Bagged loess:
+ll = matrix(NA, nrow=10, ncol=155)
+for (i in 1:10) {
+	ss = sample(1:dim(ozone)[1], replace=T)
+	ozone0 = ozone[ss,]
+	ozone0 = ozone0[order(ozone0$ozone),]
+	loess0 = loess(temperature ~ ozone, data=ozone0, span=0.2)
+	# get data points along the loess curve
+	ll[i,] = predict(loess0, newdata=data.frame(ozone=1:155))
+}
+# plot it
+plot(ozone$ozone, ozone$temperature,pch=19,cex=0.5)
+for (i in 1:10) {
+	lines(1:155, ll[i,], col='grey', lwd=2)
+}
+lines(1:155, apply(ll,2,mean), col='red', lwd=2)
+
+## using caret for bagging
+predictors = data.frame(ozone=ozone$ozone)
+temperature = ozone$temperature
+treebag = bag(predictors, temperature, B=10,
+			bagControl= bagControl(fit=ctreeBag$fit,
+									predict=ctreeBag$pred,
+									aggregate=ctreeBag$aggregate))
+
+plot(ozone$ozone, temperature,col='lightgrey', pch=19)
+# plot predictions based on predictor 1
+points(ozone$ozone,predict(treebag$fits[[1]]$fit,predictors), pch=19, col='red')
+# plot predictions based on average of all predictors
+points(ozone$ozone, predict(treebag,predictors), pch=19, col='blue')
+
+
+####################
+## Random Forests ##
+####################
+
+1. Bootstrap samples
+2. at each split, bootstrap variables
+3. grow multiple trees and vote
+
+	Usually one of the two top performing algorithms, along with boosting in contests
+	Difficult to interpret, but often very accurate
+	Take care to avoid over-fitting (see rfcv function)
+
+# example, using Iris data
+data(iris); library(ggplot2); library(caret);
+inTrain = createDataPartition(y=iris$Species, p=0.7, list=F)
+training = iris[inTrain,]
+testing = iris[-inTrain,]
+
+modFit = train(Species ~ ., data=training, method="rf", prox=TRUE)
+modFit # print it
+
+# Getting a single tree
+getTree(modFit$finalModel,k=2)
+
+# Class "centers"
+irisP = classCenter(training[c(3,4)], training$Species, modFit$finalModel$prox)
+irisP = as.data.frame(irisP);
+irisP$Species = rownames(irisP)
+p = qplit(Petal.Width, Petal.Length, col=Species, data=training)
+p + geom_point(aes(x=Petal.Width, y=Petal.Length, col=Species), size=5, shape=4, data=irisP)
+
+# predicting new values
+pred = predict(modFit,testing)
+testing$predCorrect = pred==testing$Species
+table(pred, testing$Species)
+
+# plot it
+qplot(Petal.Width, Petal.Length, colour=predCorrect, data=testing, main="newdata prediction")
+
+
+
+##############
+## Boosting ##
+##############
+
+Basic idea:
+	1. take lots of (possibly) weak predictors
+	2. weight them and add them up
+	3. get a stronger predictor
+
+Approach:
+	1. start with a set of classifiers (h_1, ..., h_k)
+	2. create a classifier that combines the classification functions:
+		iterative, select one h at each step
+		calculate weights based on errors
+		upweight missed classifications and select next h
+
+# Example:
+	library(ISLR); data(Wage); library(ggplot2); library(caret);
+	Wage = subset(Wage, select=-c(logwage))
+	inTrain = createDataPartition(y=Wage$wage, p=0.7, list=F)
+	training = Wage[inTrain,]
+	testing = Wage[-inTrain,]
+
+# fit the model
+	modFit = train(wage ~ ., method='gbm', data=training, verbose=F)
+	print(modFit)
+
+# plot the results
+qplot(predict(modFit,testing), wage, data=testing)
+
+
+
